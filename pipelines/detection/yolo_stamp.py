@@ -1,11 +1,10 @@
-from typing import Any
-from detection_models.yolo_stamp.constants import *
-from detection_models.yolo_stamp.utils import *
 import albumentations as A
-from albumentations.pytorch.transforms import ToTensorV2
-import torch
+import cv2
+from albumentations.pytorch import ToTensorV2
 from huggingface_hub import hf_hub_download
-import numpy as np
+
+from detection_models.yolo_stamp.utils import *
+
 
 class YoloStampPipeline:
     def __init__(self):
@@ -15,7 +14,7 @@ class YoloStampPipeline:
             A.Normalize(),
             ToTensorV2(p=1.0),
         ])
-    
+
     @classmethod
     def from_pretrained(cls, model_path_hf: str = None, filename_hf: str = "weights.pt", local_model_path: str = None):
         yolo = cls()
@@ -28,15 +27,22 @@ class YoloStampPipeline:
             yolo.model.to(yolo.device)
             yolo.model.eval()
         return yolo
-    
+
     def __call__(self, image) -> torch.Tensor:
-        shape = torch.tensor(image.size)
-        coef =  torch.hstack((shape, shape)) / 448
-        image = image.convert("RGB").resize((448, 448))
-        image_tensor = self.transform(image)
-        output = self.model(image_tensor.unsqueeze(0).to(self.device))
-        boxes = output_tensor_to_boxes(output[0].detach().cpu())
-        boxes = nonmax_suppression(boxes=boxes)
-        boxes = xywh2xyxy(torch.tensor(boxes)[:, :4])
-        boxes = boxes * coef
-        return boxes
+        image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        coef = torch.tensor([image.size[0] / 448, image.size[1] / 448], device=self.device).repeat(2)
+        # Конвертируем и рассчитываем коэффиценты пропорциональности
+        image = image.resize((448, 448))  # Меняем размер под стандарт модели
+        image_tensor = self.transform(image=np.array(image))[
+            "image"]  # albumentations трансформация, тут перегоняем изображение в numpy, иначе не сработает
+        output = self.model(image_tensor.unsqueeze(0).to(self.device))[
+            0].detach().cpu()  # отрываем от вычислений, дабы не занимать мощности и переносим обработку на CPU
+        xywh = output[..., :4].reshape(-1, 4)  # Собираем вывод модели
+        print(xywh)
+        conf = torch.sigmoid(output[..., 4]).reshape(-1)
+        mask = conf > 0  # Анализируем по уверенности, дабы отсеять ложные срабатывания (параметр 0.25 снижает кол-во зон с 147 до 6)
+        xywh, conf = xywh[mask], conf[mask]
+        print(2)
+        boxes = xywh2xyxy(xywh)  # Преобразуем в формат (x,y),(x,y)
+        print(boxes)
+        return boxes * coef.to(boxes.device)  # Важно не забыть домножить на коэфицент пропорциональности
