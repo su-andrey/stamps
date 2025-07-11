@@ -42,4 +42,4 @@ class YoloStampPipeline:
         mask = conf > 0.25  # Анализируем по уверенности, дабы отсеять ложные срабатывания (параметр 0.25 снижает кол-во зон с 147 до 6)
         xywh, conf = xywh[mask], conf[mask]
         boxes = xywh2xyxy(xywh)  # Преобразуем в формат (x,y),(x,y)
-        return str(boxes * coef.to(boxes.device))  # Важно не забыть домножить на коэфицент пропорциональности
+        return boxes * coef.to(boxes.device)  # Важно не забыть домножить на коэфицент пропорциональности
