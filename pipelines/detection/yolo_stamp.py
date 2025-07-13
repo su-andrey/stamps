@@ -2,7 +2,6 @@ import albumentations as A
 import cv2
 from albumentations.pytorch import ToTensorV2
 from huggingface_hub import hf_hub_download
-import torchvision
 from detection_models.yolo_stamp.utils import *
 
 
@@ -28,7 +27,7 @@ class YoloStampPipeline:
             yolo.model.eval()
         return yolo
 
-    def __call__(self, image) -> torch.Tensor:
+    def __call__(self, image, conf_value) -> torch.Tensor:
         image = Image.fromarray(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         coef = torch.tensor([image.size[0] / 448, image.size[1] / 448], device=self.device).repeat(2)
         # Конвертируем и рассчитываем коэффиценты пропорциональности
@@ -39,7 +38,7 @@ class YoloStampPipeline:
             0].detach().cpu()  # отрываем от вычислений, дабы не занимать мощности и переносим обработку на CPU
         xywh = output[..., :4].reshape(-1, 4)  # Собираем вывод модели
         conf = torch.sigmoid(output[..., 4]).reshape(-1)
-        mask = conf > 0.25  # Анализируем по уверенности, дабы отсеять ложные срабатывания (параметр 0.25 снижает кол-во зон с 147 до 6)
+        mask = conf > conf_value  # Анализируем по уверенности, дабы отсеять ложные срабатывания (параметр 0.25 снижает кол-во зон с 147 до 6)
         xywh, conf = xywh[mask], conf[mask]
         boxes = xywh2xyxy(xywh)  # Преобразуем в формат (x,y),(x,y)
         return boxes * coef.to(boxes.device)  # Важно не забыть домножить на коэфицент пропорциональности
