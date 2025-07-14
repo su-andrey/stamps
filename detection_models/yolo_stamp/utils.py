@@ -1,9 +1,11 @@
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import torch
 from PIL import Image, ImageDraw
-import pandas as pd
-import numpy as np
-from pathlib import Path
-import matplotlib.pyplot as plt
+
 from .constants import *
 
 
@@ -20,40 +22,40 @@ def output_tensor_to_boxes(boxes_tensor):
         Note: "None" is here because you don't know the exact number of selected boxes, as it depends on the threshold. 
         For example, the actual output size of scores would be (10, 5) if there are 10 boxes
     """
-    cell_w, cell_h = W/S, H/S
+    cell_w, cell_h = W / S, H / S
     boxes = []
-    
+
     for i in range(S):
         for j in range(S):
             for b in range(BOX):
                 anchor_wh = torch.tensor(ANCHORS[b])
-                data = boxes_tensor[i,j,b]
+                data = boxes_tensor[i, j, b]
                 xy = torch.sigmoid(data[:2])
-                wh = torch.exp(data[2:4])*anchor_wh
+                wh = torch.exp(data[2:4]) * anchor_wh
                 obj_prob = torch.sigmoid(data[4])
-                
+
                 if obj_prob > OUTPUT_THRESH:
                     x_center, y_center, w, h = xy[0], xy[1], wh[0], wh[1]
-                    x, y = x_center+j-w/2, y_center+i-h/2
-                    x,y,w,h = x*cell_w, y*cell_h, w*cell_w, h*cell_h
-                    box = [x,y,w,h, obj_prob]
+                    x, y = x_center + j - w / 2, y_center + i - h / 2
+                    x, y, w, h = x * cell_w, y * cell_h, w * cell_w, h * cell_h
+                    box = [x, y, w, h, obj_prob]
                     boxes.append(box)
     return boxes
 
 
-def plot_img(img, size=(7,7)):
+def plot_img(img, size=(7, 7)):
     plt.figure(figsize=size)
     plt.imshow(img)
     plt.show()
 
 
-def plot_normalized_img(img, std=STD, mean=MEAN, size=(7,7)):
+def plot_normalized_img(img, std=STD, mean=MEAN, size=(7, 7)):
     mean = mean if isinstance(mean, np.ndarray) else np.array(mean)
     std = std if isinstance(std, np.ndarray) else np.array(std)
     plt.figure(figsize=size)
     plt.imshow((255. * (img * std + mean)).astype(np.uint))
     plt.show()
-    
+
 
 def visualize_bbox(image: Image, prediction):
     img = image.copy()
@@ -64,7 +66,7 @@ def visualize_bbox(image: Image, prediction):
         text_w, text_h = draw.textsize(str(i + 1))
         label_y = y1 if y1 <= text_h else y1 - text_h
         draw.rectangle((x1, y1, x2, y2), outline='red')
-        draw.rectangle((x1, label_y, x1+text_w, label_y+text_h), outline='red', fill='red')
+        draw.rectangle((x1, label_y, x1 + text_w, label_y + text_h), outline='red', fill='red')
         draw.text((x1, label_y), str(i + 1), fill='white')
     return img
 
@@ -92,9 +94,10 @@ def read_data(annotations=Path(ANNOTATIONS_PATH)):
             'boxes': []}
         stamp_nb = img_data['box_nb']
         if stamp_nb <= STAMP_NB_MAX:
-            img_data['boxes'] = cur_boxes[['bbox_x', 'bbox_y','bbox_width','bbox_height']].values
+            img_data['boxes'] = cur_boxes[['bbox_x', 'bbox_y', 'bbox_width', 'bbox_height']].values
         data.append(img_data)
     return data
+
 
 def xywh2xyxy(x):
     """
@@ -109,9 +112,10 @@ def xywh2xyxy(x):
     y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
     y[..., 0] = x[..., 0]
     y[..., 1] = x[..., 1]
-    y[..., 2] = x[..., 0] + x[..., 2] 
-    y[..., 3] = x[..., 1] + x[..., 3] 
+    y[..., 2] = x[..., 0] + x[..., 2]
+    y[..., 3] = x[..., 1] + x[..., 3]
     return y
+
 
 def boxes_to_tensor(boxes):
     """
@@ -124,7 +128,7 @@ def boxes_to_tensor(boxes):
         boxes_tensor -- tensor of shape (S, S, BOX, 5)
     """
     boxes_tensor = torch.zeros((S, S, BOX, 5))
-    cell_w, cell_h = W/S, H/S
+    cell_w, cell_h = W / S, H / S
     for i, box in enumerate(boxes):
         x, y, w, h = box
         # normalize xywh with cell_size
@@ -132,10 +136,10 @@ def boxes_to_tensor(boxes):
         center_x, center_y = x + w / 2, y + h / 2
         grid_x = int(np.floor(center_x))
         grid_y = int(np.floor(center_y))
-        
+
         if grid_x < S and grid_y < S:
             boxes_tensor[grid_y, grid_x, :, 0:4] = torch.tensor(BOX * [[center_x - grid_x, center_y - grid_y, w, h]])
-            boxes_tensor[grid_y, grid_x, :, 4]  = torch.tensor(BOX * [1.])
+            boxes_tensor[grid_y, grid_x, :, 4] = torch.tensor(BOX * [1.])
     return boxes_tensor
 
 
@@ -147,19 +151,19 @@ def target_tensor_to_boxes(boxes_tensor, output_threshold=OUTPUT_THRESH):
         Returns:
             boxes -- list of boxes, each box is [x, y, w, h]
     """
-    cell_w, cell_h = W/S, H/S
+    cell_w, cell_h = W / S, H / S
     boxes = []
     for i in range(S):
         for j in range(S):
             for b in range(BOX):
-                data = boxes_tensor[i,j,b]
-                x_center,y_center, w, h, obj_prob = data[0], data[1], data[2], data[3], data[4]
+                data = boxes_tensor[i, j, b]
+                x_center, y_center, w, h, obj_prob = data[0], data[1], data[2], data[3], data[4]
                 if obj_prob > output_threshold:
-                    x, y = x_center+j-w/2, y_center+i-h/2
-                    x,y,w,h = x*cell_w, y*cell_h, w*cell_w, h*cell_h
-                    box = [x,y,w,h]
+                    x, y = x_center + j - w / 2, y_center + i - h / 2
+                    x, y, w, h = x * cell_w, y * cell_h, w * cell_w, h * cell_h
+                    box = [x, y, w, h]
                     boxes.append(box)
-    return boxes    
+    return boxes
 
 
 def overlap(interval_1, interval_2):
@@ -179,12 +183,12 @@ def overlap(interval_1, interval_2):
         if x4 < x1:
             return 0
         else:
-            return min(x2,x4) - x1
+            return min(x2, x4) - x1
     else:
         if x2 < x3:
             return 0
         else:
-            return min(x2,x4) - x3
+            return min(x2, x4) - x3
 
 
 def compute_iou(box1, box2):
@@ -199,20 +203,20 @@ def compute_iou(box1, box2):
         Returns:
         iou -- intersection over union score between two boxes
     """
-    x1,y1,w1,h1 = box1[0], box1[1], box1[2], box1[3]
-    x2,y2,w2,h2 = box2[0], box2[1], box2[2], box2[3]
+    x1, y1, w1, h1 = box1[0], box1[1], box1[2], box1[3]
+    x2, y2, w2, h2 = box2[0], box2[1], box2[2], box2[3]
 
-    area1, area2 = w1*h1, w2*h2
-    intersect_w = overlap((x1,x1+w1), (x2,x2+w2))
-    intersect_h = overlap((y1,y1+h1), (y2,y2+w2))
+    area1, area2 = w1 * h1, w2 * h2
+    intersect_w = overlap((x1, x1 + w1), (x2, x2 + w2))
+    intersect_h = overlap((y1, y1 + h1), (y2, y2 + w2))
     if intersect_w == w1 and intersect_h == h1 or intersect_w == w2 and intersect_h == h2:
         return 1.
-    intersect_area = intersect_w*intersect_h
-    iou = intersect_area/(area1 + area2 - intersect_area)
+    intersect_area = intersect_w * intersect_h
+    iou = intersect_area / (area1 + area2 - intersect_area)
     return iou
 
 
-def nonmax_suppression(boxes, iou_thresh = IOU_THRESH):
+def nonmax_suppression(boxes, iou_thresh=IOU_THRESH):
     """
         Removes ovelap bboxes
 
@@ -228,7 +232,7 @@ def nonmax_suppression(boxes, iou_thresh = IOU_THRESH):
     for i, current_box in enumerate(boxes):
         if current_box[4] <= 0:
             continue
-        for j in range(i+1, len(boxes)):
+        for j in range(i + 1, len(boxes)):
             iou = compute_iou(current_box, boxes[j])
             if iou > iou_thresh:
                 boxes[j][4] = 0
@@ -236,7 +240,6 @@ def nonmax_suppression(boxes, iou_thresh = IOU_THRESH):
     return boxes
 
 
-    
 def yolo_head(yolo_output):
     """
         Converts a yolo output tensor to separate tensors of coordinates, shapes and probabilities.
@@ -254,6 +257,7 @@ def yolo_head(yolo_output):
     wh = torch.exp(yolo_output[..., 2:4]) * anchors_wh
     prob = torch.sigmoid(yolo_output[..., 4:5])
     return xy, wh, prob
+
 
 def process_target(target):
     xy = target[..., 0:2]
